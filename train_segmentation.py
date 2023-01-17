@@ -9,8 +9,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 import numpy as np
 import h5py
-# import skimage.io as io
-# import skimage.transform as trans
+import skimage.io as io
+import skimage.transform as trans
 import matplotlib.pyplot as plt
 from scipy import ndimage
 import shutil
@@ -22,7 +22,10 @@ import logging
 import model_structure
 import losses
 import metrics
+from skimage import exposure
 from tensorflow.python.client import device_lib
+import scipy.ndimage
+import random
 
 logging.basicConfig(
     level=logging.INFO  # allow DEBUG level messages to pass through the logger
@@ -207,7 +210,7 @@ def augmentation_function(images, labels):
         lbl = labels[ii, ...]
 
         # ROTATE
-        angles = (-40, 40)
+        angles = (-30, 30)
         theta = np.random.uniform(angles[0], angles[1])
 
         # RANDOM WIDTH SHIFT
@@ -244,6 +247,12 @@ def augmentation_function(images, labels):
 
         # RANDOM VERTICAL FLIP
         flip_vertical = (np.random.random() < 0.5)
+        
+        # RANDOM GAMMA CORRECTION
+        gamma = (np.random.random() < 0.5)
+
+        # RANDOM BLURR
+        blurr = (np.random.random() < 0.5)
 
         img, lbl = apply_affine_transform(img, lbl, rows=rows, cols=cols,
                                           theta=theta, tx=tx, ty=ty,
@@ -258,6 +267,14 @@ def augmentation_function(images, labels):
         if flip_vertical:
             img = flip_axis(img, 0)
             lbl = flip_axis(lbl, 0)
+        
+        if gamma:
+            gg = random.randrange(8, 13, 1)
+            img = exposure.adjust_gamma(img, gg/10)
+        
+        if blurr:
+            ss = random.randrange(6, 16, 2)
+            img = scipy.ndimage.gaussian_filter(img, ss/10)
 
         new_images.append(img)
         new_labels.append(lbl)
@@ -345,6 +362,7 @@ PATH
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 log_root = 'D:\GRASSO\logdir'
 experiment_name = 'ConvMixUnet'
+data_path = 'D:\BED_REST\data'
 forceoverwrite = True
 
 out_fold = os.path.join(log_root, experiment_name)
@@ -366,12 +384,12 @@ print_txt(out_fold, ['\nExperiment_name %s' % experiment_name])
 LOAD DATA
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 logging.info('\nLoading data...')
-data = h5py.File(os.path.join('D:\GRASSO\data', 'train.hdf5'), 'r')
+data = h5py.File(os.path.join(data_path, 'train.hdf5'), 'r')
 train_img = data['img_raw'][()]
 train_label = data['mask'][()]
 data.close()
 
-data = h5py.File(os.path.join('D:\GRASSO\data', 'val.hdf5'), 'r')
+data = h5py.File(os.path.join(data_path, 'val.hdf5'), 'r')
 val_img = data['img_raw'][()]
 val_label = data['mask'][()]
 data.close()
@@ -432,6 +450,9 @@ print('Model prepared...')
 if os.path.exists(os.path.join(out_fold, 'model_weights.h5')):
     print('\nLoading saved weights...')
     model.load_weights(os.path.join(out_fold, 'model_weights.h5'))
+else:
+    print('\nNot founded saved weights...')
+    print('Training from scratch...')
 
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 TRAINING MODEL
@@ -525,134 +546,46 @@ for epoch in range(epochs):
         logging.info('Current learning rate: %.6f' % curr_lr)
 
     # EarlyStopping
-    if no_improvement_counter > 48:  # Early stop if val loss does not improve after n epochs
+    if no_improvement_counter > 40:  # Early stop if val loss does not improve after n epochs
         logging.info('Early stop at epoch {}.\n'.format(str(epoch + 1)))
         break
+    
+    if epoch % 10 == 0 and epoch != 0:
+        # plot history (loss and metrics)
+    plt.figure(figsize=(8, 8))
+    plt.grid(False)
+    plt.title("Learning curve LOSS", fontsize=20)
+    plt.plot(train_history["loss"], label="Train loss")
+    plt.plot(val_history["loss"], label="Val loss")
+    p = np.argmin(val_history["loss"])
+    plt.plot(p, val_history["loss"][p], marker="x", color="r", label="best model")
+    plt.xlabel("Epochs", fontsize=16)
+    plt.ylabel("Loss", fontsize=16)
+    plt.legend();
+    plt.savefig(os.path.join(out_fold, 'Loss'), dpi=300)
+    plt.close()
+
+    plt.figure(figsize=(8, 8))
+    plt.grid(False)
+    plt.title("Dice Coefficient", fontsize=20)
+    plt.plot(train_history["dice_coef"], label="Train dice")
+    plt.plot(val_history["dice_coef"], label="Val dice")
+    p = np.argmax(val_history["dice_coef"])
+    plt.plot(p, val_history["dice_coef"][p], marker="x", color="r", label="best model")
+    plt.xlabel("Epochs", fontsize=16)
+    plt.ylabel("Dice", fontsize=16)
+    plt.legend();
+    plt.savefig(os.path.join(out_fold, 'dice_coef'), dpi=300)
+    plt.close()
+
+    # plot learning rate
+    plt.figure(figsize=(8, 8))
+    plt.grid(False)
+    plt.title("Model learning rate", fontsize=20)
+    plt.plot(lr_hist)
+    plt.xlabel("Epochs", fontsize=16)
+    plt.ylabel("LR", fontsize=16)
+    plt.savefig(os.path.join(out_fold, 'LR'), dpi=300)
+    plt.close()
 
 print('\nModel correctly trained and saved')
-
-# plot history (loss and metrics)
-plt.figure(figsize=(8, 8))
-plt.grid(False)
-plt.title("Learning curve LOSS", fontsize=20)
-plt.plot(train_history["loss"], label="Train loss")
-plt.plot(val_history["loss"], label="Val loss")
-p = np.argmin(val_history["loss"])
-plt.plot(p, val_history["loss"][p], marker="x", color="r", label="best model")
-plt.xlabel("Epochs", fontsize=16)
-plt.ylabel("Loss", fontsize=16)
-plt.legend();
-plt.savefig(os.path.join(out_fold, 'Loss'), dpi=300)
-plt.close()
-
-plt.figure(figsize=(8, 8))
-plt.grid(False)
-plt.title("Dice Coefficient", fontsize=20)
-plt.plot(train_history["dice_coef"], label="Train dice")
-plt.plot(val_history["dice_coef"], label="Val dice")
-p = np.argmax(val_history["dice_coef"])
-plt.plot(p, val_history["dice_coef"][p], marker="x", color="r", label="best model")
-plt.xlabel("Epochs", fontsize=16)
-plt.ylabel("Dice", fontsize=16)
-plt.legend();
-plt.savefig(os.path.join(out_fold, 'dice_coef'), dpi=300)
-plt.close()
-
-# plot learning rate
-plt.figure(figsize=(8, 8))
-plt.grid(False)
-plt.title("Model learning rate", fontsize=20)
-plt.plot(lr_hist)
-plt.xlabel("Epochs", fontsize=16)
-plt.ylabel("LR", fontsize=16)
-plt.savefig(os.path.join(out_fold, 'LR'), dpi=300)
-plt.close()
-
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-TESTING AND EVALUATING THE MODEL
-"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-print('-' * 50)
-print('Testing...')
-print('-' * 50)
-gt_exists = 'True'
-test_path = os.path.join(out_fold, 'predictions')
-
-if not tf.io.gfile.exists(test_path):
-    tf.io.gfile.makedirs(test_path)
-data_file_path = os.path.join(test_path, 'pred.hdf5')
-out_pred_data = h5py.File(data_file_path, "w")
-
-data = h5py.File(os.path.join('D:\GRASSO\data', 'test.hdf5'), 'r')
-test_img = data['img_raw'][()]
-test_label = data['mask'][()]
-test_paz = data['paz'][()]
-test_px = data['pixel_size'][()]
-data.close()
-
-with open(out_file, "a") as text_file:
-    text_file.write('\n----- test Data summary -----')
-print_txt(out_fold, ['\nTesting Images size: %s %s %s' % (test_img.shape[0], test_img.shape[1], test_img.shape[2])])
-print_txt(out_fold, ['\nTesting Images shape: %s' % test_img.dtype])
-
-print('Loading saved weights...')
-model = tf.keras.models.load_model(os.path.join(out_fold, 'model_weights.h5'),
-                                   custom_objects={'loss_function': losses.focal_tversky_loss(), 'dice_coef': losses.dice_coef})
-
-RAW = []
-PRED = []
-PAZ = []
-MASK = []
-PIXEL = []
-
-total_time = 0
-total_volumes = 0
-
-for paz in np.unique(test_paz):
-    start_time = time.time()
-    logging.info(' --------------------------------------------')
-    logging.info('------- Analysing paz: %s' % paz)
-    logging.info(' --------------------------------------------')
-
-    for ii in np.where(test_paz == paz)[0]:
-        img = test_img[ii]
-        RAW.append(img)
-        PAZ.append(paz)
-        PIXEL.append(test_px[ii])
-        if gt_exists:
-            MASK.append(test_label[ii])
-
-        img = normalize_image(img)
-        img = np.float32(img)
-        x = np.reshape(img, (1, img.shape[0], img.shape[1], 1))
-        mask_out = model.predict(x)
-        mask_out = np.squeeze(mask_out)
-        PRED.append(mask_out)
-    elapsed_time = time.time() - start_time
-    total_time += elapsed_time
-    total_volumes += 1
-    logging.info('Evaluation of volume took %f secs.' % elapsed_time)
-    print_txt(out_fold, ['\nEvaluation of volume took %f secs.' % elapsed_time])
-
-n_file = len(PRED)
-dt = h5py.special_dtype(vlen=str)
-out_pred_data.create_dataset('img_raw', [n_file] + [160, 160], dtype=np.float32)
-out_pred_data.create_dataset('pred', [n_file] + [160, 160], dtype=np.uint8)
-out_pred_data.create_dataset('pixel_size', (n_file, 3), dtype=dt)
-out_pred_data.create_dataset('paz', (n_file,), dtype=dt)
-if gt_exists:
-    out_pred_data.create_dataset('mask', [n_file] + [160, 160], dtype=np.uint8)
-
-for i in range(n_file):
-    out_pred_data['img_raw'][i, ...] = RAW[i]
-    out_pred_data['pred'][i, ...] = PRED[i]
-    out_pred_data['paz'][i, ...] = PAZ[i]
-    out_pred_data['pixel_size'][i, ...] = PIXEL[i]
-    if gt_exists:
-        out_pred_data['mask'][i, ...] = MASK[i]
-
-out_pred_data.close()
-logging.info('Average time per volume: %f' % (total_time / total_volumes))
-print_txt(out_fold, ['\nAverage time per volume: %f' % (total_time / total_volumes)])
-
-if gt_exists:
-    metrics.main(test_path)
