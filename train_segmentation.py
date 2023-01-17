@@ -444,7 +444,7 @@ with open(out_file, 'a') as f:
 # plot_model(model, to_file=os.path.join(log_dir,'model_plot.png'), show_shapes=True, show_layer_names=True)
 
 opt = tf.keras.optimizers.Adam(learning_rate=curr_lr)
-model.compile(optimizer=opt, loss=losses.focal_tversky_loss(), metrics=[losses.dice_coef])
+model.compile(optimizer=opt, loss=losses.combo_loss(), metrics=[losses.dice_coef])
 print('Model prepared...')
 
 if os.path.exists(os.path.join(out_fold, 'model_weights.h5')):
