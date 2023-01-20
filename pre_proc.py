@@ -145,74 +145,7 @@ def crop_or_pad_slice_to_size_specific_point(slice, nx, ny, cx, cy):
         return slice_cropped
 
 
-def concatenate(list_file, out_fold, name_file):
-    print('------- %s --------' % name_file)
-    dt = h5py.special_dtype(vlen=str)
-    data_file_path = os.path.join(out_fold, name_file+'.hdf5')
-    hdf5_file = h5py.File(data_file_path, "w")
-    c=1
-    for file in list_file:
-        print(file)
-        data = h5py.File(os.path.join(file, 'pre_proc.hdf5'), 'r')
-        d1 = data['paz'][()]
-        d2 = data['phase'][()]
-        d3 = data['mask'][()]
-        d4 = data['img_seg'][()]
-        d5 = data['img_raw'][()]
-        d6 = data['img_up'][()]
-        d7 = data['img_down'][()]
-        d8 = data['img_left'][()]
-        d9 = data['img_right'][()]
-        
-        print("img_raw:", d5.shape, d5.dtype)
-        print("mask:", d3.shape, d3.dtype)
-        if c==1:
-            paz = d1
-            phase = d2
-            mask = d3
-            img_seg = d4
-            img_raw = d5
-            img_up = d6
-            img_down = d7
-            img_left = d8
-            img_right = d9
-            c += 1
-        else:
-            paz = np.concatenate((paz, d1), axis=0)
-            phase = np.concatenate((phase, d2), axis=0)
-            mask = np.concatenate((mask, d3), axis=0)
-            img_seg = np.concatenate((img_seg, d4), axis=0)
-            img_raw = np.concatenate((img_raw, d5), axis=0)
-            img_up = np.concatenate((img_up, d6), axis=0)
-            img_down = np.concatenate((img_down, d7), axis=0)
-            img_left = np.concatenate((img_left, d8), axis=0)
-            img_right = np.concatenate((img_right, d9), axis=0)
-        print("img_raw after conc:", img_raw.shape)
-        print("mask after conc:", mask.shape)
-        data.close()
-    
-    hdf5_file.create_dataset('paz', paz.shape, dtype=dt)
-    hdf5_file.create_dataset('phase', phase.shape, dtype=dt)
-    hdf5_file.create_dataset('mask', mask.shape, mask.dtype)
-    hdf5_file.create_dataset('img_seg', img_seg.shape, img_seg.dtype)
-    hdf5_file.create_dataset('img_raw', img_raw.shape, img_raw.dtype)
-    hdf5_file.create_dataset('img_up', img_up.shape, img_up.dtype)
-    hdf5_file.create_dataset('img_down', img_down.shape, img_down.dtype)
-    hdf5_file.create_dataset('img_left', img_left.shape, img_left.dtype)
-    hdf5_file.create_dataset('img_right', img_right.shape, img_right.dtype)
-    
-    hdf5_file['paz'][()] = paz
-    hdf5_file['phase'][()] = phase
-    hdf5_file['mask'][()] = mask
-    hdf5_file['img_seg'][()] = img_seg
-    hdf5_file['img_raw'][()] = img_raw
-    hdf5_file['img_up'][()] = img_up
-    hdf5_file['img_down'][()] = img_down
-    hdf5_file['img_left'][()] = img_left
-    hdf5_file['img_right'][()] = img_right
-    
-    hdf5_file.close()
- 
+
 '''
 if __name__ == '__main__':
     
