@@ -40,6 +40,8 @@ print('is_gpu_available: %s' % tf.test.is_gpu_available())  # True/False
 print('gpu with cuda support: %s' % tf.test.is_gpu_available(cuda_only=True))
 strategy = tf.distribute.MirroredStrategy()
 print('Number of devices: {}'.format(strategy.num_replicas_in_sync))
+
+
 # tf.config.list_physical_devices('GPU') #The above function is deprecated in tensorflow > 2.1
 
 def standardize_image(image):
@@ -214,7 +216,7 @@ def augmentation_function(images, labels):
         theta = np.random.uniform(angles[0], angles[1])
 
         # RANDOM WIDTH SHIFT
-        width_rg = 0.05
+        width_rg = 0
         if width_rg >= 1:
             ty = np.random.choice(int(width_rg))
             ty *= np.random.choice([-1, 1])
@@ -226,7 +228,7 @@ def augmentation_function(images, labels):
             raise ValueError("do_width_shift_range parameter should be >0")
 
         # RANDOM HEIGHT SHIFT
-        height_rg = 0.05
+        height_rg = 0
         if height_rg >= 1:
             tx = np.random.choice(int(height_rg))
             tx *= np.random.choice([-1, 1])
@@ -238,16 +240,16 @@ def augmentation_function(images, labels):
             raise ValueError("do_height_shift_range parameter should be >0")
 
         # ZOOM
-        #Float or [lower, upper].Range for random zoom.
-        #If a float, `[lower, upper] = [1 - zoom_range, 1 + zoom_range]`
-        zx, zy = np.random.uniform(1-0.05, 1+0.05, 2)
+        # Float or [lower, upper].Range for random zoom.
+        # If a float, `[lower, upper] = [1 - zoom_range, 1 + zoom_range]`
+        zx, zy = np.random.uniform(1 - 0.05, 1 + 0.05, 2)
 
         # RANDOM HORIZONTAL FLIP
-        flip_horizontal = (np.random.random() < 0.5)
+        # flip_horizontal = (np.random.random() < 0.5)
 
         # RANDOM VERTICAL FLIP
-        flip_vertical = (np.random.random() < 0.5)
-        
+        # flip_vertical = (np.random.random() < 0.5)
+
         # RANDOM GAMMA CORRECTION
         gamma = (np.random.random() < 0.5)
 
@@ -259,7 +261,7 @@ def augmentation_function(images, labels):
                                           zx=zx, zy=zy,
                                           fill_mode='nearest',
                                           order=1)
-
+        '''
         if flip_horizontal:
             img = flip_axis(img, 1)
             lbl = flip_axis(lbl, 1)
@@ -267,14 +269,14 @@ def augmentation_function(images, labels):
         if flip_vertical:
             img = flip_axis(img, 0)
             lbl = flip_axis(lbl, 0)
-        
+        '''
         if gamma:
             gg = random.randrange(8, 13, 1)
-            img = exposure.adjust_gamma(img, gg/10)
-        
+            img = exposure.adjust_gamma(img, gg / 10)
+
         if blurr:
             ss = random.randrange(6, 16, 2)
-            img = scipy.ndimage.gaussian_filter(img, ss/10)
+            img = scipy.ndimage.gaussian_filter(img, ss / 10)
 
         new_images.append(img)
         new_labels.append(lbl)
@@ -357,12 +359,47 @@ def print_txt(output_dir, stringa):
         text_file.writelines(stringa)
 
 
+def read_data(path):
+    train_img = []
+    train_label = []
+    val_img = []
+    val_label = []
+    data1 = h5py.File(os.path.join(path, 'pre_proc_art.hdf5'), "r")
+    list_paz = np.unique(data1['paz'])
+    random_indices = np.arange(list_paz.shape[0])
+    np.random.seed(42)
+    np.random.shuffle(random_indices)
+    for b_i in range(len(list_paz)):
+        for i in range(len(np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0])):
+            if b_i < int(len(list_paz) / 100 * 15):
+                val_label.append(data1['mask'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+                val_img.append(data1['img_raw'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+            else:
+                train_label.append(data1['mask'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+                train_img.append(data1['img_raw'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+    data1.close()
+    data1 = h5py.File(os.path.join(path, 'pre_proc_sani.hdf5'), "r")
+    list_paz = np.unique(data1['paz'])
+    random_indices = np.arange(list_paz.shape[0])
+    np.random.seed(42)
+    np.random.shuffle(random_indices)
+    for b_i in range(len(list_paz)):
+        for i in range(len(np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0])):
+            if b_i < int(len(list_paz) / 100 * 15):
+                val_label.append(data1['mask'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+                val_img.append(data1['img_raw'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+            else:
+                train_label.append(data1['mask'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+                train_img.append(data1['img_raw'][np.where(data1['paz'][()] == list_paz[random_indices[b_i]])[0][i]])
+    data1.close()
+    return np.asarray(train_img), np.asarray(train_label), np.asarray(val_img), np.asarray(val_label)
+
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 PATH
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
-log_root = 'D:\GRASSO\logdir'
-experiment_name = 'ConvMixUnet'
-data_path = 'D:\BED_REST\data'
+log_root = 'D:\Artefact_correction\logdir'
+experiment_name = 'prova1'
+data_path = 'D:\Artefact_correction\data'
 forceoverwrite = True
 
 out_fold = os.path.join(log_root, experiment_name)
@@ -384,15 +421,8 @@ print_txt(out_fold, ['\nExperiment_name %s' % experiment_name])
 LOAD DATA
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 logging.info('\nLoading data...')
-data = h5py.File(os.path.join(data_path, 'train.hdf5'), 'r')
-train_img = data['img_raw'][()]
-train_label = data['mask'][()]
-data.close()
-
-data = h5py.File(os.path.join(data_path, 'val.hdf5'), 'r')
-val_img = data['img_raw'][()]
-val_label = data['mask'][()]
-data.close()
+train_img, train_label, val_img, val_label = read_data(data_path)
+logging.info('\nData have been loaded')
 
 with open(out_file, "a") as text_file:
     text_file.write('\n----- Data summary -----')
@@ -437,7 +467,7 @@ print_txt(out_fold, ['\ncurr_lr: %s\n\n' % curr_lr])
 LOADING MODEL
 """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 print('\nCreating and compiling model...')
-model = model_structure.ConvMixUnet(n_filt=64)
+model = model_structure.AttUnet2d(n_filt=64)
 
 with open(out_file, 'a') as f:
     model.summary(print_fn=lambda x: f.write(x + '\n'))
@@ -549,43 +579,43 @@ for epoch in range(epochs):
     if no_improvement_counter > 40:  # Early stop if val loss does not improve after n epochs
         logging.info('Early stop at epoch {}.\n'.format(str(epoch + 1)))
         break
-    
+
     if epoch % 10 == 0 and epoch != 0:
         # plot history (loss and metrics)
-    plt.figure(figsize=(8, 8))
-    plt.grid(False)
-    plt.title("Learning curve LOSS", fontsize=20)
-    plt.plot(train_history["loss"], label="Train loss")
-    plt.plot(val_history["loss"], label="Val loss")
-    p = np.argmin(val_history["loss"])
-    plt.plot(p, val_history["loss"][p], marker="x", color="r", label="best model")
-    plt.xlabel("Epochs", fontsize=16)
-    plt.ylabel("Loss", fontsize=16)
-    plt.legend();
-    plt.savefig(os.path.join(out_fold, 'Loss'), dpi=300)
-    plt.close()
+        plt.figure(figsize=(8, 8))
+        plt.grid(False)
+        plt.title("Learning curve LOSS", fontsize=20)
+        plt.plot(train_history["loss"], label="Train loss")
+        plt.plot(val_history["loss"], label="Val loss")
+        p = np.argmin(val_history["loss"])
+        plt.plot(p, val_history["loss"][p], marker="x", color="r", label="best model")
+        plt.xlabel("Epochs", fontsize=16)
+        plt.ylabel("Loss", fontsize=16)
+        plt.legend();
+        plt.savefig(os.path.join(out_fold, 'Loss'), dpi=300)
+        plt.close()
 
-    plt.figure(figsize=(8, 8))
-    plt.grid(False)
-    plt.title("Dice Coefficient", fontsize=20)
-    plt.plot(train_history["dice_coef"], label="Train dice")
-    plt.plot(val_history["dice_coef"], label="Val dice")
-    p = np.argmax(val_history["dice_coef"])
-    plt.plot(p, val_history["dice_coef"][p], marker="x", color="r", label="best model")
-    plt.xlabel("Epochs", fontsize=16)
-    plt.ylabel("Dice", fontsize=16)
-    plt.legend();
-    plt.savefig(os.path.join(out_fold, 'dice_coef'), dpi=300)
-    plt.close()
+        plt.figure(figsize=(8, 8))
+        plt.grid(False)
+        plt.title("Dice Coefficient", fontsize=20)
+        plt.plot(train_history["dice_coef"], label="Train dice")
+        plt.plot(val_history["dice_coef"], label="Val dice")
+        p = np.argmax(val_history["dice_coef"])
+        plt.plot(p, val_history["dice_coef"][p], marker="x", color="r", label="best model")
+        plt.xlabel("Epochs", fontsize=16)
+        plt.ylabel("Dice", fontsize=16)
+        plt.legend();
+        plt.savefig(os.path.join(out_fold, 'dice_coef'), dpi=300)
+        plt.close()
 
-    # plot learning rate
-    plt.figure(figsize=(8, 8))
-    plt.grid(False)
-    plt.title("Model learning rate", fontsize=20)
-    plt.plot(lr_hist)
-    plt.xlabel("Epochs", fontsize=16)
-    plt.ylabel("LR", fontsize=16)
-    plt.savefig(os.path.join(out_fold, 'LR'), dpi=300)
-    plt.close()
+        # plot learning rate
+        plt.figure(figsize=(8, 8))
+        plt.grid(False)
+        plt.title("Model learning rate", fontsize=20)
+        plt.plot(lr_hist)
+        plt.xlabel("Epochs", fontsize=16)
+        plt.ylabel("LR", fontsize=16)
+        plt.savefig(os.path.join(out_fold, 'LR'), dpi=300)
+        plt.close()
 
 print('\nModel correctly trained and saved')
