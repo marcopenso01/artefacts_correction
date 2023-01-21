@@ -140,5 +140,4 @@ def combo_loss(alpha=0.5):
 
         return combo_loss
 
-    return 
-
+    return loss_function
