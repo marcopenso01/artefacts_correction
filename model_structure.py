@@ -119,7 +119,14 @@ def ResPath(encoder, length=1):
     return out
 
 
-def AttUnet2d(input_size1=(224, 224, 1), n_filt=32):
+def skip_mix(x, length=1):
+    channels = x.shape[-1]
+    for _ in range(length):
+        x = conv_mixer_block(x, filters=channels, kernel_size=3)
+    return x
+
+
+def ConvMixer1(input_size1=(224, 224, 1), n_filt=32):
     input_model1 = Input(input_size1)
 
     # ConvMix layer 1
@@ -144,15 +151,17 @@ def AttUnet2d(input_size1=(224, 224, 1), n_filt=32):
     pool2 = MaxPooling2D(pool_size=(2, 2))(concatenate([x2, x22], axis=-1))
 
     # ConvMix layer 3
+    '''
     x3 = conv_stem(input_model1, filters=256, patch_size=4)
     for _ in range(8):
         x3 = conv_mixer_block(x3, filters=256, kernel_size=7)
-
+    '''
     # COnv layer3
     x32 = conv_mixer_block(pool2, filters=n_filt * 4, kernel_size=3)
     x32 = conv_mixer_block(x32, filters=n_filt * 4, kernel_size=3)
 
-    pool3 = MaxPooling2D(pool_size=(2, 2))(concatenate([x3, x32], axis=-1))
+    #pool3 = MaxPooling2D(pool_size=(2, 2))(concatenate([x3, x32], axis=-1))
+    pool3 = MaxPooling2D(pool_size=(2, 2))(x32)
 
     # layer4
     x4 = conv_mixer_block(pool3, filters=n_filt * 8, kernel_size=3)
@@ -165,28 +174,28 @@ def AttUnet2d(input_size1=(224, 224, 1), n_filt=32):
     x5 = conv_mixer_block(x5, filters=n_filt * 16, kernel_size=3)
 
     up4 = UpSampling2D(size=(2, 2))(x5)
-    skip4 = ResPath(x4, length=1)
+    skip4 = skip_mix(x4, length=1)
     conc4 = concatenate([up4, skip4], axis=3)
 
     conv6 = conv_mixer_block(conc4, filters=n_filt * 8, kernel_size=3)
     conv6 = conv_mixer_block(conv6, filters=n_filt * 8, kernel_size=3)
 
     up3 = UpSampling2D(size=(2, 2))(conv6)
-    skip3 = ResPath(x32, length=2)
+    skip3 = skip_mix(x32, length=2)
     conc3 = concatenate([up3, skip3], axis=3)
 
     conv7 = conv_mixer_block(conc3, filters=n_filt * 4, kernel_size=3)
     conv7 = conv_mixer_block(conv7, filters=n_filt * 4, kernel_size=3)
 
     up2 = UpSampling2D(size=(2, 2))(conv7)
-    skip2 = ResPath(x22, length=3)
+    skip2 = skip_mix(x22, length=3)
     conc2 = concatenate([up2, skip2], axis=3)
 
     conv8 = conv_mixer_block(conc2, filters=n_filt * 2, kernel_size=3)
     conv8 = conv_mixer_block(conv8, filters=n_filt * 2, kernel_size=3)
 
     up1 = UpSampling2D(size=(2, 2))(conv8)
-    skip1 = ResPath(x12, length=4)
+    skip1 = skip_mix(x12, length=4)
     conc1 = concatenate([up1, skip1], axis=3)
 
     conv9 = conv_mixer_block(conc1, filters=n_filt, kernel_size=3)
@@ -199,7 +208,7 @@ def AttUnet2d(input_size1=(224, 224, 1), n_filt=32):
     return model
 
 
-def ConvMixer2(input_size1=(160, 160, 1), n_filt=32):
+def ConvMixer2(input_size1=(224, 224, 1), n_filt=32):
 
     input_model1 = Input(input_size1)
 
