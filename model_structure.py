@@ -126,7 +126,7 @@ def skip_mix(x, length=1):
     return x
 
 
-def ConvMixer1(input_size1=(224, 224, 1), n_filt=32):
+def ConvMixer1(input_size1=(192, 192, 1), n_filt=32):
     input_model1 = Input(input_size1)
 
     # ConvMix layer 1
@@ -208,7 +208,7 @@ def ConvMixer1(input_size1=(224, 224, 1), n_filt=32):
     return model
 
 
-def ConvMixer2(input_size1=(224, 224, 1), n_filt=32):
+def ConvMixer2(input_size1=(192, 192, 1), n_filt=32):
 
     input_model1 = Input(input_size1)
 
@@ -224,8 +224,8 @@ def ConvMixer2(input_size1=(224, 224, 1), n_filt=32):
 
     # layer2
     x2 = conv_stem(input_model1, filters=256, patch_size=2)
-    for _ in range(10):
-        x2 = conv_mixer_block(x2, filters=256, kernel_size=10)
+    for _ in range(8):
+        x2 = conv_mixer_block(x2, filters=256, kernel_size=7)
 
     conc2 = concatenate([pool1, x2], axis=3)
     conv2 = conv_mixer_block(conc2, filters=n_filt * 2, kernel_size=3)
@@ -234,8 +234,8 @@ def ConvMixer2(input_size1=(224, 224, 1), n_filt=32):
 
     # layer3
     x3 = conv_stem(input_model1, filters=256, patch_size=4)
-    for _ in range(10):
-        x3 = conv_mixer_block(x3, filters=256, kernel_size=10)
+    for _ in range(8):
+        x3 = conv_mixer_block(x3, filters=256, kernel_size=7)
 
     conc3 = concatenate([pool2, x3], axis=3)
     conv3 = conv_mixer_block(conc3, filters=n_filt * 4, kernel_size=3)
