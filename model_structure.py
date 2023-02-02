@@ -174,28 +174,28 @@ def ConvMixer1(input_size1=(192, 192, 1), n_filt=32):
     x5 = conv_mixer_block(x5, filters=n_filt * 16, kernel_size=3)
 
     up4 = UpSampling2D(size=(2, 2))(x5)
-    skip4 = skip_mix(x4, length=1)
+    skip4 = ResPath(x4, length=1)
     conc4 = concatenate([up4, skip4], axis=3)
 
     conv6 = conv_mixer_block(conc4, filters=n_filt * 8, kernel_size=3)
     conv6 = conv_mixer_block(conv6, filters=n_filt * 8, kernel_size=3)
 
     up3 = UpSampling2D(size=(2, 2))(conv6)
-    skip3 = skip_mix(x32, length=2)
+    skip3 = ResPath(x32, length=2)
     conc3 = concatenate([up3, skip3], axis=3)
 
     conv7 = conv_mixer_block(conc3, filters=n_filt * 4, kernel_size=3)
     conv7 = conv_mixer_block(conv7, filters=n_filt * 4, kernel_size=3)
 
     up2 = UpSampling2D(size=(2, 2))(conv7)
-    skip2 = skip_mix(x22, length=3)
+    skip2 = ResPath(x22, length=3)
     conc2 = concatenate([up2, skip2], axis=3)
 
     conv8 = conv_mixer_block(conc2, filters=n_filt * 2, kernel_size=3)
     conv8 = conv_mixer_block(conv8, filters=n_filt * 2, kernel_size=3)
 
     up1 = UpSampling2D(size=(2, 2))(conv8)
-    skip1 = skip_mix(x12, length=4)
+    skip1 = ResPath(x12, length=4)
     conc1 = concatenate([up1, skip1], axis=3)
 
     conv9 = conv_mixer_block(conc1, filters=n_filt, kernel_size=3)
@@ -276,6 +276,156 @@ def ConvMixer2(input_size1=(192, 192, 1), n_filt=32):
         BatchNormalization()(Conv2D(n_filt, (3, 3), padding='same', kernel_initializer='he_normal')(conc9)))
     conv9 = ReLU()(
         BatchNormalization()(Conv2D(n_filt, (3, 3), padding='same', kernel_initializer='he_normal')(conv9)))
+
+    conv_out = Conv2D(1, 1, activation='sigmoid', padding='same', kernel_initializer='he_normal')(conv9)
+
+    model = Model(inputs=input_model1, outputs=conv_out)
+    logging.info('Finish building model')
+    return model
+
+
+def ConvMixer3(input_size1=(192, 192, 1), n_filt=32):
+    input_model1 = Input(input_size1)
+
+    # ConvMix layer 1
+    x1 = conv_stem(input_model1, filters=n_filt, patch_size=1)
+    for _ in range(6):
+        x1 = conv_mixer_block(x1, filters=n_filt, kernel_size=9)
+    # Conv Layer 1
+    x12 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', kernel_initializer='he_normal')(input_model1)))
+    x12 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', kernel_initializer='he_normal')(x12)))
+
+    pool1 = MaxPooling2D(pool_size=(2, 2))(add([x1, x12]))
+
+    # ConvMix layer 2
+    x2 = conv_stem(input_model1, filters=n_filt * 2, patch_size=2)
+    for _ in range(6):
+        x2 = conv_mixer_block(x2, filters=n_filt * 2, kernel_size=7)
+
+    # Conv Layer 2
+    x22 = conv_mixer_block(pool1, filters=n_filt * 2, kernel_size=3)
+    x22 = conv_mixer_block(x22, filters=n_filt * 2, kernel_size=3)
+
+    pool2 = MaxPooling2D(pool_size=(2, 2))(add([x2, x22]))
+
+    # ConvMix layer 3
+    '''
+    x3 = conv_stem(input_model1, filters=256, patch_size=4)
+    for _ in range(8):
+        x3 = conv_mixer_block(x3, filters=256, kernel_size=7)
+    '''
+    # COnv layer3
+    x32 = conv_mixer_block(pool2, filters=n_filt * 4, kernel_size=3)
+    x32 = conv_mixer_block(x32, filters=n_filt * 4, kernel_size=3)
+
+    #pool3 = MaxPooling2D(pool_size=(2, 2))(concatenate([x3, x32], axis=-1))
+    pool3 = MaxPooling2D(pool_size=(2, 2))(x32)
+
+    # layer4
+    x4 = conv_mixer_block(pool3, filters=n_filt * 8, kernel_size=3)
+    x4 = conv_mixer_block(x4, filters=n_filt * 8, kernel_size=3)
+
+    pool4 = MaxPooling2D(pool_size=(2, 2))(x4)
+
+    # layer5
+    x5 = conv_mixer_block(pool4, filters=n_filt * 16, kernel_size=3)
+    x5 = conv_mixer_block(x5, filters=n_filt * 16, kernel_size=3)
+
+    up4 = UpSampling2D(size=(2, 2))(x5)
+    skip4 = ResPath(x4, length=1)
+    conc4 = concatenate([up4, skip4], axis=3)
+
+    conv6 = conv_mixer_block(conc4, filters=n_filt * 8, kernel_size=3)
+    conv6 = conv_mixer_block(conv6, filters=n_filt * 8, kernel_size=3)
+
+    up3 = UpSampling2D(size=(2, 2))(conv6)
+    skip3 = ResPath(x32, length=2)
+    conc3 = concatenate([up3, skip3], axis=3)
+
+    conv7 = conv_mixer_block(conc3, filters=n_filt * 4, kernel_size=3)
+    conv7 = conv_mixer_block(conv7, filters=n_filt * 4, kernel_size=3)
+
+    up2 = UpSampling2D(size=(2, 2))(conv7)
+    skip2 = ResPath(x22, length=3)
+    conc2 = concatenate([up2, skip2], axis=3)
+
+    conv8 = conv_mixer_block(conc2, filters=n_filt * 2, kernel_size=3)
+    conv8 = conv_mixer_block(conv8, filters=n_filt * 2, kernel_size=3)
+
+    up1 = UpSampling2D(size=(2, 2))(conv8)
+    skip1 = ResPath(x12, length=4)
+    conc1 = concatenate([up1, skip1], axis=3)
+
+    conv9 = conv_mixer_block(conc1, filters=n_filt, kernel_size=3)
+    conv9 = conv_mixer_block(conv9, filters=n_filt, kernel_size=3)
+
+    conv_out = Conv2D(1, 1, activation='sigmoid', padding='same', kernel_initializer='he_normal')(conv9)
+
+    model = Model(inputs=input_model1, outputs=conv_out)
+    logging.info('Finish building model')
+    return model
+
+def ConvMixer4(input_size1=(192, 192, 1), n_filt=32):
+    input_model1 = Input(input_size1)
+
+    # ConvMix layer 1
+    mix1 = conv_stem(input_model1, filters=128, patch_size=1)
+    for _ in range(8):
+        mix1 = conv_mixer_block(mix1, filters=128, kernel_size=9)
+    x11 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', kernel_initializer='he_normal')(mix1)))
+    x12 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', strides=(2, 2), kernel_initializer='he_normal')(mix1)))
+
+    # Conv Layer 1
+    x1 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', kernel_initializer='he_normal')(input_model1)))
+    x1 = BatchNormalization()(ReLU()(Conv2D(n_filt, 3, padding='same', kernel_initializer='he_normal')(x1)))
+    pool1 = MaxPooling2D(pool_size=(2, 2))(concatenate([x1, x11], axis=3))
+
+    # Conv Layer 2
+    x2 = conv_mixer_block(pool1, filters=n_filt * 2, kernel_size=3)
+    x2 = conv_mixer_block(x2, filters=n_filt * 2, kernel_size=3)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(concatenate([x2, x12], axis=3))
+
+    # COnv layer3
+    x3 = conv_mixer_block(pool2, filters=n_filt * 4, kernel_size=3)
+    x3 = conv_mixer_block(x3, filters=n_filt * 4, kernel_size=3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(x3)
+
+    # layer4
+    x4 = conv_mixer_block(pool3, filters=n_filt * 8, kernel_size=3)
+    x4 = conv_mixer_block(x4, filters=n_filt * 8, kernel_size=3)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(x4)
+
+    # layer5
+    x5 = conv_mixer_block(pool4, filters=n_filt * 16, kernel_size=3)
+    x5 = conv_mixer_block(x5, filters=n_filt * 16, kernel_size=3)
+
+    up4 = UpSampling2D(size=(2, 2))(x5)
+    skip4 = ResPath(x4, length=1)
+    conc4 = concatenate([up4, skip4], axis=3)
+
+    conv6 = conv_mixer_block(conc4, filters=n_filt * 8, kernel_size=3)
+    conv6 = conv_mixer_block(conv6, filters=n_filt * 8, kernel_size=3)
+
+    up3 = UpSampling2D(size=(2, 2))(conv6)
+    skip3 = ResPath(x3, length=2)
+    conc3 = concatenate([up3, skip3], axis=3)
+
+    conv7 = conv_mixer_block(conc3, filters=n_filt * 4, kernel_size=3)
+    conv7 = conv_mixer_block(conv7, filters=n_filt * 4, kernel_size=3)
+
+    up2 = UpSampling2D(size=(2, 2))(conv7)
+    skip2 = ResPath(x2, length=3)
+    conc2 = concatenate([up2, skip2], axis=3)
+
+    conv8 = conv_mixer_block(conc2, filters=n_filt * 2, kernel_size=3)
+    conv8 = conv_mixer_block(conv8, filters=n_filt * 2, kernel_size=3)
+
+    up1 = UpSampling2D(size=(2, 2))(conv8)
+    skip1 = ResPath(x1, length=4)
+    conc1 = concatenate([up1, skip1], axis=3)
+
+    conv9 = conv_mixer_block(conc1, filters=n_filt, kernel_size=3)
+    conv9 = conv_mixer_block(conv9, filters=n_filt, kernel_size=3)
 
     conv_out = Conv2D(1, 1, activation='sigmoid', padding='same', kernel_initializer='he_normal')(conv9)
 
