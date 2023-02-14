@@ -6,37 +6,6 @@ from keras.preprocessing.image import load_img
 from numpy import savez_compressed
 from numpy import load
 from matplotlib import pyplot
-import concatenation
-
-
-# load all images in a directory into memory
-def load_images(path, size=(256,256)):
-    data_list = []
-    data = h5py.File(path, 'r')
-    train_img = data['img_raw'][()]
-    for i in range(len(train_img)):
-	# resize the image
-	img = cv2.resize(train_img[i], (400, 400), interpolation = cv2.INTER_CUBIC)
-	# normalize the image
-	img = normalize_image(img))
-	# store
-	data_list.append(img)
-    # convert to numpy array
-    return asarray(data_list)
-
-# dataset path
-path = 'xxxxx'
-# load dataset A (artifacts)
-dataA1 = load_images(path + 'trainA/')
-dataAB = load_images(path + 'testA/')
-print('Loaded dataA: ', dataA.shape)
-# load dataset B (no artifacts)
-dataB1 = load_images(path + 'trainB/')
-dataB2 = load_images(path + 'testB/')
-dataB = vstack((dataB1, dataB2))
-print('Loaded dataB: ', dataB.shape)
-
-# example of training a cyclegan on the horse2zebra dataset
 from random import random
 from numpy import load
 from numpy import zeros
@@ -54,6 +23,27 @@ from keras.layers import Activation
 from keras.layers import Concatenate
 from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from matplotlib import pyplot
+import concatenation
+
+
+# load all images into memory
+def load_images(path, size=(256,256)):
+    data_list = []
+    data = h5py.File(path, 'r')
+    train_img = data['img_raw'][()]
+    for i in range(len(train_img)):
+	# resize the image
+	img = cv2.resize(train_img[i], (400, 400), interpolation = cv2.INTER_CUBIC)
+	# normalize the image
+	img = normalize_image(img))
+	# store
+	data_list.append(img)
+    # convert to numpy array
+    return asarray(data_list)
+
+# calculate the effective receptive field size
+def receptive_field(output_size, kernel_size, stride_size):
+    return (output_size - 1) * stride_size + kernel_size
 
 # define the discriminator model
 def define_discriminator(image_shape):
@@ -73,9 +63,11 @@ def define_discriminator(image_shape):
 	d = InstanceNormalization(axis=-1)(d)
 	d = LeakyReLU(alpha=0.2)(d)
 	# C512
+	'''
 	d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
 	d = InstanceNormalization(axis=-1)(d)
 	d = LeakyReLU(alpha=0.2)(d)
+	'''
 	# second last output layer
 	d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
 	d = InstanceNormalization(axis=-1)(d)
@@ -297,6 +289,34 @@ def train(d_model_A, d_model_B, g_model_AtoB, g_model_BtoA, c_model_AtoB, c_mode
 			save_models(i, g_model_AtoB, g_model_BtoA)
 
 # load image data
+# dataset path
+path = 'xxxxx'
+# load dataset A (artifacts)
+dataA1 = load_images(path + 'trainA/')
+dataAB = load_images(path + 'testA/')
+print('Loaded dataA: ', dataA.shape)
+# load dataset B (no artifacts)
+dataB1 = load_images(path + 'trainB/')
+dataB2 = load_images(path + 'testB/')
+dataB = vstack((dataB1, dataB2))
+print('Loaded dataB: ', dataB.shape)
+
+
+# output layer 1x1 pixel with 4x4 kernel and 1x1 stride
+rf = receptive_field(1, 4, 1)
+print(rf)
+# second last layer with 4x4 kernel and 1x1 stride
+rf = receptive_field(rf, 4, 1)
+print(rf)
+# 3 PatchGAN layers with 4x4 kernel and 2x2 stride
+rf = receptive_field(rf, 4, 2)
+print(rf)
+rf = receptive_field(rf, 4, 2)
+print(rf)
+rf = receptive_field(rf, 4, 2)
+print(rf)
+
+
 dataset = load_real_samples('horse2zebra_256.npz')
 print('Loaded', dataset[0].shape, dataset[1].shape)
 # define input shape based on the loaded dataset
