@@ -12,30 +12,30 @@ from numpy import zeros
 from numpy import ones
 from numpy import asarray
 from numpy.random import randint
-from keras.optimizers import Adam
-from keras.initializers import RandomNormal
-from keras.models import Model
-from keras.models import Input
-from keras.layers import Conv2D
-from keras.layers import Conv2DTranspose
-from keras.layers import LeakyReLU
-from keras.layers import Activation
-from keras.layers import Concatenate
-from keras_contrib.layers.normalization.instancenormalization import InstanceNormalization
 from matplotlib import pyplot
 import concatenation
+import model_structure
 
 
-# load all images into memory
+def normalize_image(image):
+    '''
+    make image normalize between -1 and 1
+    '''
+    img_o = np.float32(image.copy())
+    img_o = 2*((img_o-img_o.min())/(img_o.max()-img_o.min()))-1
+    #img_o = (img_o-img_o.min())/(img_o.max()-img_o.min())
+    return img_o
+
+# load images into memory
 def load_images(path, size=(256,256)):
     data_list = []
     data = h5py.File(path, 'r')
     train_img = data['img_raw'][()]
     for i in range(len(train_img)):
 	# resize the image
-	img = cv2.resize(train_img[i], (400, 400), interpolation = cv2.INTER_CUBIC)
+	img = cv2.resize(train_img[i], (400, 400), interpolation = cv2.INTER_AREA)
 	# normalize the image
-	img = normalize_image(img))
+	img = normalize_image(img)
 	# store
 	data_list.append(img)
     # convert to numpy array
@@ -45,95 +45,16 @@ def load_images(path, size=(256,256)):
 def receptive_field(output_size, kernel_size, stride_size):
     return (output_size - 1) * stride_size + kernel_size
 
-# define the discriminator model
-def define_discriminator(image_shape):
-	# weight initialization
-	init = RandomNormal(stddev=0.02)
-	# source image input
-	in_image = Input(shape=image_shape)
-	# C64
-	d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(in_image)
-	d = LeakyReLU(alpha=0.2)(d)
-	# C128
-	d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-	d = InstanceNormalization(axis=-1)(d)
-	d = LeakyReLU(alpha=0.2)(d)
-	# C256
-	d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-	d = InstanceNormalization(axis=-1)(d)
-	d = LeakyReLU(alpha=0.2)(d)
-	# C512
-	'''
-	d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
-	d = InstanceNormalization(axis=-1)(d)
-	d = LeakyReLU(alpha=0.2)(d)
-	'''
-	# second last output layer
-	d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
-	d = InstanceNormalization(axis=-1)(d)
-	d = LeakyReLU(alpha=0.2)(d)
-	# patch output
-	patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
-	# define model
-	model = Model(in_image, patch_out)
-	# compile model
-	model.compile(loss='mse', optimizer=Adam(lr=0.0002, beta_1=0.5), loss_weights=[0.5])
-	return model
-
-# generator a resnet block
-def resnet_block(n_filters, input_layer):
-	# weight initialization
-	init = RandomNormal(stddev=0.02)
-	# first layer convolutional layer
-	g = Conv2D(n_filters, (3,3), padding='same', kernel_initializer=init)(input_layer)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# second convolutional layer
-	g = Conv2D(n_filters, (3,3), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	# concatenate merge channel-wise with input layer
-	g = Concatenate()([g, input_layer])
-	return g
-
-# define the standalone generator model
-def define_generator(image_shape, n_resnet=9):
-	# weight initialization
-	init = RandomNormal(stddev=0.02)
-	# image input
-	in_image = Input(shape=image_shape)
-	# c7s1-64
-	g = Conv2D(64, (7,7), padding='same', kernel_initializer=init)(in_image)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# d128
-	g = Conv2D(128, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# d256
-	g = Conv2D(256, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# R256
-	for _ in range(n_resnet):
-		g = resnet_block(256, g)
-	# u128
-	g = Conv2DTranspose(128, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# u64
-	g = Conv2DTranspose(64, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	g = Activation('relu')(g)
-	# c7s1-3
-	g = Conv2D(3, (7,7), padding='same', kernel_initializer=init)(g)
-	g = InstanceNormalization(axis=-1)(g)
-	out_image = Activation('tanh')(g)
-	# define model
-	model = Model(in_image, out_image)
-	return model
-
 # define a composite model for updating generators by adversarial and cycle loss
 def define_composite_model(g_model_1, d_model, g_model_2, image_shape):
+	'''
+	function that takes a defined generator model (g_model_1) 
+	as well as the defined discriminator model for the generator models 
+	output (d_model) and the other generator model (g_model_2). 
+	The weights of the other models are marked as not trainable 
+	as we are only interested in updating the first generator model, 
+	i.e. the focus of this composite model.
+	'''
 	# ensure the model we're updating is trainable
 	g_model_1.trainable = True
 	# mark discriminator as not trainable
@@ -141,13 +62,32 @@ def define_composite_model(g_model_1, d_model, g_model_2, image_shape):
 	# mark other generator model as not trainable
 	g_model_2.trainable = False
 	# discriminator element
+	'''
+	Generator is updated to minimize the loss predicted by the 
+	discriminator for generated images marked as “real“, called 
+	adversarial loss.
+	Discriminator is connected to the output of the generator 
+	in order to classify generated images as real or fake
+	Input: source domain
+	'''
 	input_gen = Input(shape=image_shape)
 	gen1_out = g_model_1(input_gen)
 	output_d = d_model(gen1_out)
 	# identity element
+	'''
+	a generator model is expected to output an image without 
+	translation when provided an example from the target domain, 
+	called identity loss.
+	Input: target domain
+	'''
 	input_id = Input(shape=image_shape)
 	output_id = g_model_1(input_id)
 	# forward cycle
+	'''
+	generator is updated based on how effective it is at the regeneration 
+	of a source image when used with the other generator model, 
+	called cycle loss
+	'''
 	output_f = g_model_2(gen1_out)
 	# backward cycle
 	gen2_out = g_model_2(input_id)
@@ -157,6 +97,9 @@ def define_composite_model(g_model_1, d_model, g_model_2, image_shape):
 	# define optimization algorithm configuration
 	opt = Adam(lr=0.0002, beta_1=0.5)
 	# compile model with weighting of least squares loss and L1 loss
+	'''
+	weighted sum of all loss functions
+	'''
 	model.compile(loss=['mse', 'mae', 'mae', 'mae'], loss_weights=[1, 5, 10, 10], optimizer=opt)
 	return model
 
@@ -173,6 +116,9 @@ def load_real_samples(filename):
 
 # select a batch of random samples, returns images and target
 def generate_real_samples(dataset, n_samples, patch_shape):
+	'''
+	Patch_shape: the shape of the PatchGAN output (24x24x1 activation map)
+	'''
 	# choose random instances
 	ix = randint(0, dataset.shape[0], n_samples)
 	# retrieve selected images
@@ -285,8 +231,12 @@ def train(d_model_A, d_model_B, g_model_AtoB, g_model_BtoA, c_model_AtoB, c_mode
 			# plot B->A translation
 			summarize_performance(i, g_model_BtoA, trainB, 'BtoA')
 		if (i+1) % (bat_per_epo * 5) == 0:
+			'''
+			models are saved every five epochs
+			'''
 			# save the models
 			save_models(i, g_model_AtoB, g_model_BtoA)
+
 
 # load image data
 # dataset path
