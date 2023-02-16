@@ -432,3 +432,154 @@ def ConvMixer4(input_size1=(192, 192, 1), n_filt=32):
     model = Model(inputs=input_model1, outputs=conv_out)
     logging.info('Finish building model')
     return model
+
+
+# define the discriminator model
+def define_discriminator(image_shape):
+	# weight initialization
+	init = RandomNormal(stddev=0.02)
+	# source image input
+	in_image = Input(shape=image_shape)
+	# C64
+	d = Conv2D(64, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(in_image)
+	d = LeakyReLU(alpha=0.2)(d)
+	# C128
+	d = Conv2D(128, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+	d = InstanceNormalization(axis=-1)(d)
+	d = LeakyReLU(alpha=0.2)(d)
+	# C256
+	d = Conv2D(256, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+	d = InstanceNormalization(axis=-1)(d)
+	d = LeakyReLU(alpha=0.2)(d)
+	# C512
+	'''
+	d = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d)
+	d = InstanceNormalization(axis=-1)(d)
+	d = LeakyReLU(alpha=0.2)(d)
+	'''
+	# second last output layer
+	d = Conv2D(512, (4,4), padding='same', kernel_initializer=init)(d)
+	d = InstanceNormalization(axis=-1)(d)
+	d = LeakyReLU(alpha=0.2)(d)
+	# patch output
+	patch_out = Conv2D(1, (4,4), padding='same', kernel_initializer=init)(d)
+	# define model
+	model = Model(in_image, patch_out)
+	# compile model
+	model.compile(loss='mse', optimizer=Adam(lr=0.0002, beta_1=0.5), loss_weights=[0.5])
+	return model
+
+
+# generator a resnet block
+def resnet_block(n_filters, input_layer):
+	# weight initialization
+	init = RandomNormal(stddev=0.02)
+	# first layer convolutional layer
+	g = Conv2D(n_filters, (3,3), padding='same', kernel_initializer=init)(input_layer)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# second convolutional layer
+	g = Conv2D(n_filters, (3,3), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	# concatenate merge channel-wise with input layer
+	g = Concatenate()([g, input_layer])
+	return g
+
+
+# define generator model (ResNet)
+def define_generator_1(image_shape, n_resnet=9):
+	# weight initialization
+	init = RandomNormal(stddev=0.02)
+	# image input
+	in_image = Input(shape=image_shape)
+	# c7s1-64
+	g = Conv2D(64, (7,7), padding='same', kernel_initializer=init)(in_image)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# d128
+	g = Conv2D(128, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# d256
+	g = Conv2D(256, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# R256
+	for _ in range(n_resnet):
+		g = resnet_block(256, g)
+	# u128
+	g = Conv2DTranspose(128, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# u64
+	g = Conv2DTranspose(64, (3,3), strides=(2,2), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	g = Activation('relu')(g)
+	# c7s1-3
+	g = Conv2D(3, (7,7), padding='same', kernel_initializer=init)(g)
+	g = InstanceNormalization(axis=-1)(g)
+	out_image = Activation('tanh')(g)
+	# define model
+	model = Model(in_image, out_image)
+	return model
+    
+ 
+# define an encoder block
+def define_encoder_block(layer_in, n_filters, batchnorm=True):
+    # weight initialization
+    init = RandomNormal(stddev=0.02)
+    # add downsampling layer
+    g = Conv2D(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+    # conditionally add batch normalization
+    if batchnorm:
+        g = BatchNormalization()(g, training=True)
+    # leaky relu activation
+    g = LeakyReLU(alpha=0.2)(g)
+    return g
+ 
+
+# define a decoder block
+def decoder_block(layer_in, skip_in, n_filters, dropout=True):
+    # weight initialization
+    init = RandomNormal(stddev=0.02)
+    # add upsampling layer
+    g = Conv2DTranspose(n_filters, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(layer_in)
+    # add batch normalization
+    g = BatchNormalization()(g, training=True)
+    # conditionally add dropout
+    if dropout:
+        g = Dropout(0.5)(g, training=True)
+    # merge with skip connection
+    g = Concatenate()([g, skip_in])
+    # relu activation
+    g = Activation('relu')(g)
+    return g
+
+
+# define the standalone generator model
+def define_generator_2(image_shape):
+    # weight initialization
+    init = RandomNormal(stddev=0.02)
+    # image input
+    in_image = Input(shape=image_shape)
+    # encoder model: C64-C128-C256-C512-C512
+    e1 = define_encoder_block(in_image, 64, batchnorm=False)
+    e2 = define_encoder_block(e1, 128)
+    e3 = define_encoder_block(e2, 256)
+    e4 = define_encoder_block(e3, 512)
+    e5 = define_encoder_block(e4, 512)
+    # bottleneck, no batch norm and relu
+    b = Conv2D(512, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(e5)
+    b = Activation('relu')(b)
+    # decoder model: CD512-CD1024-CD1024-C1024-C1024-C512-C256-C128
+    d1 = decoder_block(b, e5, 512)
+    d2 = decoder_block(d1, e4, 512, dropout=False)
+    d3 = decoder_block(d2, e3, 256, dropout=False)
+    d4 = decoder_block(d3, e2, 128, dropout=False)
+    d5 = decoder_block(d4, e1, 64, dropout=False)
+    # output
+    g = Conv2DTranspose(3, (4,4), strides=(2,2), padding='same', kernel_initializer=init)(d5)
+    out_image = Activation('tanh')(g)
+    # define model
+    model = Model(in_image, out_image)
+    return model
